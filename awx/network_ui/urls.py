@@ -2,7 +2,10 @@
 from django.conf.urls import include, url
 import sys
 
-from . import views
+from awx.network_ui import v1_api_urls
+from awx.network_ui import v2_api_urls
+
+from awx.network_ui import views
 import awx.network_ui.routing
 
 app_name = 'network_ui'
@@ -14,6 +17,7 @@ urlpatterns = [
     url(r'^download_recording$', views.download_recording, name='download_recording'),
     url(r'^topology.json$', views.json_topology_data, name='json_topology_data'),
     url(r'^topology.yaml$', views.yaml_topology_data, name='json_topology_data'),
-    url(r'^$', views.index, name='index'),
+    url(r'^api/v1/', include(v1_api_urls.router.urls)),
+    url(r'^api/v2/', include(v2_api_urls.router.urls)),
 ]
 
