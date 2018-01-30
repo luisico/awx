@@ -3,6 +3,7 @@ external_models: []
 models:
 - api: true
   display: name
+  end_point: /network_ui/api/v1/device/
   fields:
   - name: device_id
     pk: true
@@ -84,6 +85,7 @@ models:
   y: 10
 - api: true
   display: name
+  end_point: /network_ui/api/v1/topology/
   fields:
   - name: topology_id
     pk: true
@@ -160,7 +162,12 @@ models:
   x: -501
   y: 428
 - api: true
+  create_transform:
+    device__id: device_id
+    id: id
+    name: name
   display: name
+  end_point: /network_ui/api/v1/interface/
   fields:
   - name: interface_id
     pk: true
@@ -181,6 +188,7 @@ models:
   x: 1157
   y: 337
 - api: true
+  end_point: /network_ui/api/v1/group/
   fields:
   - name: group_id
     pk: true
@@ -215,6 +223,7 @@ models:
   x: 407
   y: -379
 - api: true
+  end_point: /network_ui/api/v1/groupdevice/
   fields:
   - name: group_device_id
     pk: true
@@ -289,6 +298,7 @@ models:
   x: -207
   y: -282
 - api: true
+  end_point: /network_ui/api/v1/stream/
   fields:
   - name: stream_id
     pk: true
@@ -318,6 +328,7 @@ models:
   x: 709
   y: 527
 - api: true
+  end_point: /network_ui/api/v1/process/
   fields:
   - name: process_id
     pk: true
@@ -342,6 +353,7 @@ models:
   x: 654
   y: 778
 - api: true
+  end_point: /network_ui/api/v1/toolbox/
   fields:
   - name: toolbox_id
     pk: true
@@ -355,6 +367,7 @@ models:
   x: 179
   y: 644
 - api: true
+  end_point: /network_ui/api/v1/toolboxitem/
   fields:
   - name: toolbox_item_id
     pk: true
@@ -400,6 +413,7 @@ models:
   x: -872
   y: 507
 - api: true
+  end_point: /network_ui/api/v1/topologyinventory/
   fields:
   - name: topology_inventory_id
     pk: true
