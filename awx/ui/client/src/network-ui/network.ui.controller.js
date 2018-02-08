@@ -19,6 +19,8 @@ var test_fsm = require('./test.fsm.js');
 var util = require('./util.js');
 var models = require('./models.js');
 var messages = require('./messages.js');
+var animations = require('./animations.js');
+var keybindings = require('./keybindings.fsm.js');
 var svg_crowbar = require('./svg-crowbar.js');
 var ReconnectingWebSocket = require('reconnectingwebsocket');
 
@@ -133,6 +135,10 @@ var NetworkUIController = function($scope, $document, $location, $window, $http,
   $scope.trace_id_seq = util.natural_numbers(0);
   $scope.trace_order_seq = util.natural_numbers(0);
   $scope.trace_id = $scope.trace_id_seq();
+  $scope.jump = {from_x: 0,
+                 from_y: 0,
+                 to_x: 0,
+                 to_y: 0};
 
     $scope.send_trace_message = function (message) {
         if (!$scope.recording) {
@@ -152,9 +158,30 @@ var NetworkUIController = function($scope, $document, $location, $window, $http,
         }
     };
 
+    $scope.onKeyDown = function ($event) {
+        if ($scope.recording) {
+            $scope.send_control_message(new messages.KeyEvent($scope.client_id,
+                                                              $event.key,
+                                                              $event.keyCode,
+                                                              $event.type,
+                                                              $event.altKey,
+                                                              $event.shiftKey,
+                                                              $event.ctrlKey,
+                                                              $event.metaKey,
+                                                              $scope.trace_id));
+        }
+        $scope.last_event = $event;
+        $scope.last_key = $event.key;
+        $scope.last_key_code = $event.keyCode;
+        $scope.first_channel.send('KeyDown', $event);
+        $scope.$apply();
+        $event.preventDefault();
+    };
+
   //Define the FSMs
   $scope.null_controller = new fsm.FSMController($scope, "null_fsm", null_fsm.Start, $scope);
   $scope.hotkeys_controller = new fsm.FSMController($scope, "hotkeys_fsm", hotkeys.Start, $scope);
+  $scope.keybindings_controller = new fsm.FSMController($scope, "keybindings_fsm", keybindings.Start, $scope);
   $scope.view_controller = new fsm.FSMController($scope, "view_fsm", view.Start, $scope);
   $scope.device_detail_controller = new fsm.FSMController($scope, "device_detail_fsm", device_detail_fsm.Start, $scope);
   $scope.move_controller = new fsm.FSMController($scope, "move_fsm", move.Start, $scope);
@@ -204,21 +231,28 @@ var NetworkUIController = function($scope, $document, $location, $window, $http,
            .then(function(response) {
                let hosts = response.data.results;
                for(var i = 0; i<hosts.length; i++){
-                   let host = hosts[i];
-                   console.log(host);
-                   host.data = jsyaml.safeLoad(host.variables);
-                   if (host.data.type === undefined) {
-                       host.data.type = 'unknown';
+                   try {
+                       let host = hosts[i];
+                       console.log(host);
+                       if (host.variables !== "") {
+                           host.data = jsyaml.safeLoad(host.variables);
+                           if (host.data.type === undefined) {
+                               host.data.type = 'unknown';
+                           }
+                           if (host.data.name === undefined) {
+                               host.data.name = host.name;
+                           }
+                           var device = new models.Device(0, host.data.name, 0, 0, host.data.type, host.id, host.variables);
+                           device.icon = true;
+                           $scope.inventory_toolbox.items.push(device);
+                       }
+                   } catch (error) {
+                       console.log(error);
                    }
-                   if (host.data.name === undefined) {
-                       host.data.name = host.name;
-                   }
-                   var device = new models.Device(0, host.data.name, 0, 0, host.data.type, host.id, host.variables);
-                   device.icon = true;
-                   $scope.inventory_toolbox.items.push(device);
                }
            })
            .catch(({data, status}) => {
+               console.log([data, status]);
                ProcessErrors($scope, data, status, null, { hdr: 'Error!', msg: 'Failed to get host data: ' + status });
            });
   }
@@ -271,8 +305,12 @@ var NetworkUIController = function($scope, $document, $location, $window, $http,
   $scope.mode_controller = new fsm.FSMController($scope, "mode_fsm", mode_fsm.Start, $scope);
 
   //Wire up the FSMs
-  $scope.view_controller.delegate_channel = new fsm.Channel($scope.view_controller,
+  $scope.keybindings_controller.delegate_channel = new fsm.Channel($scope.keybindings_controller,
                                                             $scope.hotkeys_controller,
+                                                            $scope);
+
+  $scope.view_controller.delegate_channel = new fsm.Channel($scope.view_controller,
+                                                            $scope.keybindings_controller,
                                                             $scope);
   $scope.device_detail_controller.delegate_channel = new fsm.Channel($scope.device_detail_controller,
                                                             $scope.view_controller,
@@ -354,6 +392,24 @@ var NetworkUIController = function($scope, $document, $location, $window, $http,
         }
         var g = document.getElementById('frame_g');
         g.setAttribute('transform','translate(' + $scope.panX + ',' + $scope.panY + ') scale(' + $scope.current_scale + ')');
+    };
+
+    $scope.to_virtual_coordinates = function (b_x, b_y) {
+        var v_x = (b_x - $scope.panX) / $scope.current_scale;
+        var v_y = (b_y - $scope.panY) / $scope.current_scale;
+        return {x: v_x, y: v_y};
+    };
+
+    $scope.to_browser_coordinates = function (v_x, v_y) {
+        var b_x = (v_x * $scope.current_scale) + $scope.panX;
+        var b_y = (v_y * $scope.current_scale) + $scope.panY;
+        return {x: b_x, y: b_y};
+    };
+
+    $scope.to_pan = function (v_x, v_y) {
+        var p_x = v_x * $scope.current_scale * -1;
+        var p_y = v_y * $scope.current_scale * -1;
+        return {x: p_x, y: p_y};
     };
 
     $scope.clear_selections = function () {
@@ -567,30 +623,7 @@ var NetworkUIController = function($scope, $document, $location, $window, $http,
       $event.preventDefault();
     };
 
-    $scope.onKeyDown = function ($event) {
-        if ($scope.recording) {
-            $scope.send_control_message(new messages.KeyEvent($scope.client_id,
-                                                              $event.key,
-                                                              $event.keyCode,
-                                                              $event.type,
-                                                              $event.altKey,
-                                                              $event.shiftKey,
-                                                              $event.ctrlKey,
-                                                              $event.metaKey,
-                                                              $scope.trace_id));
-        }
-        $scope.last_event = $event;
-        $scope.last_key = $event.key;
-        $scope.last_key_code = $event.keyCode;
-        $scope.first_channel.send('KeyDown', $event);
-        $scope.$apply();
-        $event.preventDefault();
-    };
-
-    $document.bind("keydown", $scope.onKeyDown);
-
     // Conext Menu Button Handlers
-
     $scope.removeContextMenu = function(){
         let context_menu = $scope.context_menus[0];
         context_menu.enabled = false;
@@ -601,6 +634,10 @@ var NetworkUIController = function($scope, $document, $location, $window, $http,
             button.x = -100000;
             button.y = -100000;
         });
+    };
+
+    $scope.closeDetailsPanel = function () {
+        $scope.$emit('closeDetailsPanel');
     };
 
     $scope.onDetailsContextButton = function (panelBoolean) {
@@ -691,6 +728,7 @@ var NetworkUIController = function($scope, $document, $location, $window, $http,
             index = $scope.devices.indexOf(devices[i]);
             if (index !== -1) {
                 $scope.devices.splice(index, 1);
+                $scope.$emit('removeSearchOption', devices[i]);
                 $scope.send_control_message(new messages.DeviceDestroy($scope.client_id,
                                                                                  devices[i].id,
                                                                                  devices[i].x,
@@ -792,29 +830,84 @@ var NetworkUIController = function($scope, $document, $location, $window, $http,
         $scope[`on${functionName}Button`]();
     });
 
-    $scope.$on('jumpTo', function(e, zoomLevel){
+    $scope.$on('unbind', function(){
+        $scope.first_channel.send('UnbindDocument', {});
+    });
+
+    $scope.$on('bind', function(){
+        $scope.first_channel.send('BindDocument', {});
+    });
+
+    $scope.jump_to_animation = function(jump_to_x, jump_to_y, jump_to_scale) {
+        $scope.cancel_animations();
+        var v_center = $scope.to_virtual_coordinates($scope.graph.width/2, $scope.graph.height/2);
+        //console.log({v_center: v_center});
+        $scope.jump.from_x = v_center.x;
+        $scope.jump.from_y = v_center.y;
+        $scope.jump.to_x = jump_to_x;
+        $scope.jump.to_y = jump_to_y;
+        var distance = util.distance(v_center.x, v_center.y, jump_to_x, jump_to_y);
+        //console.log({distance: distance});
+        var num_frames = 30 * Math.floor((1 + 3 * distance / (distance + 3000)));
+        //console.log({num_frames: num_frames});
+        var scale_animation = new models.Animation($scope.animation_id_seq(),
+                                                  num_frames,
+                                                  {
+                                                      c: -0.1,
+                                                      end_height: (1.0/jump_to_scale) - 1,
+                                                      current_scale: $scope.current_scale,
+                                                      scope: $scope
+                                                  },
+                                                  $scope,
+                                                  $scope,
+                                                  animations.scale_animation);
+        $scope.animations.push(scale_animation);
+        var pan_animation = new models.Animation($scope.animation_id_seq(),
+                                                  num_frames,
+                                                  {
+                                                      x2: jump_to_x,
+                                                      y2: jump_to_y,
+                                                      x1: v_center.x,
+                                                      y1: v_center.y,
+                                                      scope: $scope
+                                                  },
+                                                  $scope,
+                                                  $scope,
+                                                  animations.pan_animation);
+        $scope.animations.push(pan_animation);
+    };
+
+    $scope.$on('search', function(e, device){
+
+        var num_frames = 30;
+        var searched;
+        for(var i = 0; i < $scope.devices.length; i++){
+            if(Number(device.id) === $scope.devices[i].id){
+                searched = $scope.devices[i];
+            }
+        }
+        searched.selected = true;
+        $scope.selected_devices.push(searched);
+        //console.log(searched);
+        $scope.jump_to_animation(searched.x, searched.y, 1.0);
+    });
+
+    $scope.$on('jumpTo', function(e, zoomLevel) {
+        var v_center = $scope.to_virtual_coordinates($scope.graph.width/2, $scope.graph.height/2);
         switch (zoomLevel){
             case 'site':
-                $scope.current_scale = 0.051;
+                $scope.jump_to_animation(v_center.x, v_center.y, 0.051);
                 break;
             case 'rack':
-                $scope.current_scale = 0.11;
+                $scope.jump_to_animation(v_center.x, v_center.y, 0.11);
                 break;
             case 'inventory':
-                $scope.current_scale = 0.51;
+                $scope.jump_to_animation(v_center.x, v_center.y, 0.51);
                 break;
             case 'process':
-                $scope.current_scale = 1.1;
+                $scope.jump_to_animation(v_center.x, v_center.y, 5.1);
                 break;
         }
-        // var new_panX = controller.scope.{{somethinghere}} - new_scale * ((controller.scope.mouseX - controller.scope.panX) / controller.scope.current_scale);
-        // var new_panY = controller.scope.mouseY - new_scale * ((controller.scope.mouseY - controller.scope.panY) / controller.scope.current_scale);
-        // // controller.scope.updateScaledXY();
-        // // controller.scope.current_scale = new_scale;
-        // controller.scope.panX = new_panX;
-        // controller.scope.panY = new_panY;
-        $scope.updateScaledXY();
-        $scope.updatePanAndScale();
     });
 
     $scope.onDeployButton = function (button) {
@@ -1693,6 +1786,7 @@ var NetworkUIController = function($scope, $document, $location, $window, $http,
         }
 
         $scope.updateInterfaceDots();
+        $scope.$emit('instatiateSelect', $scope.devices);
     };
 
     $scope.updateInterfaceDots = function() {
@@ -1776,7 +1870,7 @@ var NetworkUIController = function($scope, $document, $location, $window, $http,
 
     $scope.$on('$destroy', function () {
         console.log("Network UI stopping");
-        $document.unbind('keydown', $scope.onKeyDown);
+        $scope.first_channel.send('UnbindDocument', {});
     });
 
     $scope.update_toolbox_heights = function(){
@@ -1879,6 +1973,8 @@ var NetworkUIController = function($scope, $document, $location, $window, $http,
         $scope.null_controller.state.start($scope.null_controller);
         $scope.hotkeys_controller.state = hotkeys.Start;
         $scope.hotkeys_controller.state.start($scope.hotkeys_controller);
+        $scope.keybindings_controller.state = keybindings.Start;
+        $scope.keybindings_controller.state.start($scope.keybindings_controller);
         $scope.view_controller.state = view.Start;
         $scope.view_controller.state.start($scope.view_controller);
         $scope.device_detail_controller.state = device_detail_fsm.Start;
