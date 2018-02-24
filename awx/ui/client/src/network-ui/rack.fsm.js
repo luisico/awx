@@ -3,6 +3,8 @@ var inherits = require('inherits');
 var fsm = require('./fsm.js');
 var models = require('./models.js');
 var messages = require('./messages.js');
+var util = require('./util.js');
+var nunjucks = require('nunjucks');
 
 function _State () {
 }
@@ -95,6 +97,10 @@ _Ready.prototype.onPasteRack = function (controller, msg_type, message) {
     var top_left_x, top_left_y;
     var device_map = {};
     var c_messages = [];
+    var rack_template_context = null;
+    var device_template_context = null;
+    var template_variables = null;
+    var promises = [];
     scope.hide_groups = false;
 
     scope.pressedX = scope.mouseX;
@@ -113,6 +119,18 @@ _Ready.prototype.onPasteRack = function (controller, msg_type, message) {
                                  top_left_y + message.group.y2,
                                  false);
 
+    if (!controller.scope.template_building && message.group.template) {
+        try {
+            rack_template_context = {};
+            rack_template_context['id'] = group.id;
+            controller.scope.create_template_sequences(controller.scope.sequences, group.name, rack_template_context);
+            group.name = nunjucks.renderString(group.name, rack_template_context);
+            promises.push(scope.create_inventory_group(group));
+        } catch (err) {
+            console.log(err);
+        }
+    }
+
     c_messages.push(new messages.GroupCreate(scope.client_id,
                                              group.id,
                                              group.x1,
@@ -120,9 +138,18 @@ _Ready.prototype.onPasteRack = function (controller, msg_type, message) {
                                              group.x2,
                                              group.y2,
                                              group.name,
-                                             group.type));
+                                             group.type,
+                                             0));
 
     scope.groups.push(group);
+
+    if (!controller.scope.template_building && message.group.template) {
+        device_template_context = Object.assign({}, rack_template_context);
+        device_template_context['rack_id'] = group.id;
+        for(i=0; i<message.group.devices.length;i++) {
+            controller.scope.create_template_sequences(group.sequences, message.group.devices[i].name, device_template_context);
+        }
+    }
 
     for(i=0; i<message.group.devices.length;i++) {
 
@@ -133,8 +160,19 @@ _Ready.prototype.onPasteRack = function (controller, msg_type, message) {
                                    message.group.devices[i].type);
         device_map[message.group.devices[i].id] = device;
         device.interface_map = {};
+        device.in_group = true;
         scope.devices.push(device);
         group.devices.push(device);
+
+        if (!controller.scope.template_building && message.group.template) {
+            try {
+                device_template_context['id'] = device.id;
+                device.name = nunjucks.renderString(device.name, device_template_context);
+                promises.push(scope.create_inventory_host(device));
+            } catch (err) {
+                console.log(err);
+            }
+        }
         c_messages.push(new messages.DeviceCreate(scope.client_id,
                                                   device.id,
                                                   device.x,
@@ -189,6 +227,14 @@ _Ready.prototype.onPasteRack = function (controller, msg_type, message) {
     }
 
     scope.send_control_message(new messages.MultipleMessage(controller.scope.client_id, c_messages));
+
+    Promise.all(promises)
+           .then(function (res) {
+                controller.scope.create_group_association(group, group.devices);
+           })
+           .catch(function(res) {
+               console.log(res);
+           });
 };
 
 
@@ -262,6 +308,8 @@ _Selected2.prototype.onCopySelected = function (controller) {
                 device_copy.interfaces.push(interface_copy);
                 device_copy.interface_map[interface_copy.id] = interface_copy;
             }
+            device_copy.variables = JSON.stringify(devices[j].variables);
+            device_copy.template = true;
             group_copy.devices.push(device_copy);
         }
 
@@ -286,6 +334,8 @@ _Selected2.prototype.onCopySelected = function (controller) {
             }
         }
 
+        group_copy.variables = JSON.stringify(group.variables);
+        group_copy.template = true;
         controller.scope.rack_toolbox.items.push(group_copy);
     }
 };
