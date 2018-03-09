@@ -106,6 +106,7 @@ _Reporting.prototype.start = function (controller) {
     controller.scope.replay = false;
     controller.scope.disconnected = false;
     controller.scope.recording = false;
+    controller.scope.cursor.hidden = true;
     var result = "passed";
     if (controller.scope.test_errors.length > 0) {
         result = "errored";
@@ -150,6 +151,7 @@ _Loading.prototype.start = function (controller) {
         controller.scope.reset_flags();
         controller.scope.reset_fsm_state();
         controller.scope.cancel_animations();
+        controller.scope.cursor.hidden = false;
         controller.changeState(Running);
     }
 };

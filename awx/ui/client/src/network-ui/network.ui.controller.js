@@ -94,10 +94,11 @@ var NetworkUIController = function($scope,
   $scope.last_key = "";
   $scope.last_key_code = null;
   $scope.last_event = null;
-  $scope.cursor = {'x':100, 'y': 100, 'hidden': false};
+  $scope.cursor = {'x':100, 'y': 100, 'hidden': true};
 
   $scope.debug = {'hidden': true};
   $scope.hide_buttons = false;
+  $scope.hide_menus = false;
   $scope.hide_links = false;
   $scope.hide_interfaces = false;
   $scope.graph = {'width': window.innerWidth,
@@ -498,7 +499,6 @@ var NetworkUIController = function($scope,
           $scope.send_test_message(new messages.MouseEvent($scope.test_client_id, $event.x, $event.y, $event.type, $scope.trace_id));
       }
       $scope.onMouseLeaveResult = getMouseEventResult($event);
-      $scope.cursor.hidden = true;
       $event.preventDefault();
     };
 
@@ -508,7 +508,6 @@ var NetworkUIController = function($scope,
           $scope.send_test_message(new messages.MouseEvent($scope.test_client_id, $event.x, $event.y, $event.type, $scope.trace_id));
       }
       //var coords = getCrossBrowserElementCoords($event);
-      $scope.cursor.hidden = false;
       $scope.cursor.x = $event.x;
       $scope.cursor.y = $event.y;
       $scope.mouseX = $event.x;
@@ -525,7 +524,6 @@ var NetworkUIController = function($scope,
           $scope.send_test_message(new messages.MouseEvent($scope.test_client_id, $event.x, $event.y, $event.type, $scope.trace_id));
       }
       $scope.onMouseOverResult = getMouseEventResult($event);
-      $scope.cursor.hidden = false;
       $event.preventDefault();
     };
 
@@ -740,6 +738,8 @@ var NetworkUIController = function($scope,
                                                                                          $scope.current_scale,
                                                                                          $scope.panX,
                                                                                          $scope.panY,
+                                                                                         $scope.graph.width,
+                                                                                         $scope.graph.height,
                                                                                          $scope.trace_id),
                                                                    new messages.Snapshot($scope.test_client_id,
                                                                                          $scope.devices,
@@ -763,10 +763,12 @@ var NetworkUIController = function($scope,
         $scope.cursor.hidden = true;
         $scope.debug.hidden = true;
         $scope.hide_buttons = true;
+        $scope.hide_menus = true;
         setTimeout(function () {
             svg_crowbar.svg_crowbar();
             $scope.cursor.hidden = false;
             $scope.hide_buttons = false;
+            $scope.hide_menus = false;
             $scope.$apply();
         }, 1000);
     };
@@ -1237,9 +1239,9 @@ var NetworkUIController = function($scope,
     });
 
     $scope.update_toolbox_heights = function(){
-        toolboxTopMargin = $('.Networking-top').height();
-        toolboxTitleMargin = toolboxTopMargin + 35;
-        toolboxHeight = $scope.graph.height - toolboxTopMargin;
+        var toolboxTopMargin = $('.Networking-top').height();
+        var toolboxTitleMargin = toolboxTopMargin + 35;
+        var toolboxHeight = $scope.graph.height - toolboxTopMargin;
 
         let toolboxes = ['inventory_toolbox'];
         toolboxes.forEach((toolbox) => {
